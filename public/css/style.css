@@ -490,7 +490,7 @@ body.modal-open{ overflow: hidden; }
 }
 .view-bottom{
   flex-shrink:0; padding: 16px 5vw 22px; border-top: 1px solid rgba(34,48,58,0.12);
-  max-height: 32vh; overflow-y:auto;
+  max-height: 48vh; overflow-y:auto;
 }
 .view-bottom .view-title{ font-size: 1.3rem; margin-bottom: 4px; }
 .view-bottom .view-desc{ font-size: 0.9rem; margin-bottom: 10px; }
@@ -593,4 +593,58 @@ body.modal-open{ overflow: hidden; }
 @media (max-width: 640px){
   .toolbar{ flex-direction:column; }
   .search-input, .sort-select{ width:100%; }
+}
+
+/* ===== Guestbook page ===== */
+.guestbook-wrap{ padding: 0 6vw 100px; max-width: 720px; }
+.comment-form{ display:flex; flex-direction:column; gap:10px; margin-bottom: 28px; }
+.comment-form input, .comment-form textarea{
+  padding: 10px 14px; border: 1px solid rgba(34,48,58,0.25); border-radius: 6px;
+  background:#FBF7EF; font-family:'Work Sans', sans-serif; font-size: 0.9rem; resize: vertical;
+}
+.comment-form .solid-btn{ align-self:flex-start; }
+.guestbook-list, .comments-list{ display:flex; flex-direction:column; gap: 14px; }
+.comment-item{
+  background:#FBF7EF; border: 1px solid rgba(34,48,58,0.1); border-radius: 8px; padding: 12px 16px;
+}
+.comment-head{ display:flex; align-items:center; gap: 10px; margin-bottom: 4px; }
+.comment-head strong{ font-family:'Fraunces', serif; font-size: 0.95rem; }
+.comment-date{ font-size: 0.75rem; color: var(--ink-soft); }
+.del-comment-btn{
+  margin-left:auto; background:none; border:none; color: var(--ink-soft);
+  font-size: 0.75rem; cursor:pointer;
+}
+.comment-item p{ margin:0; font-size: 0.9rem; line-height:1.5; }
+.muted-text{ color: var(--ink-soft); font-size: 0.88rem; }
+
+/* ===== Comments & related inside view modal ===== */
+.comments-wrap{ margin-top: 22px; padding-top: 18px; border-top: 1px solid rgba(34,48,58,0.12); }
+.comments-title, .related-title{
+  font-family:'Fraunces', serif; font-style: italic; font-size: 1rem; margin: 0 0 12px; color: var(--brass);
+}
+.related-wrap{ margin-top: 18px; }
+.related-list{ display:flex; gap: 12px; overflow-x:auto; padding-bottom: 4px; }
+.related-item{
+  flex: 0 0 110px; cursor:pointer; text-align:center;
+}
+.related-item .card-thumb{ width: 110px; height: 110px; margin-bottom: 6px; border-radius:6px; }
+.related-item-title{
+  display:block; font-size: 0.78rem; color: var(--ink); line-height:1.3;
+  overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+}
+
+/* ===== Newsletter box in footer ===== */
+.newsletter-box{ max-width: 420px; margin: 0 auto 28px; text-align:center; }
+.newsletter-label{ font-family:'Fraunces', serif; font-style: italic; color: var(--ink); margin-bottom: 10px; }
+.newsletter-form{ display:flex; gap: 8px; }
+.newsletter-form input{
+  flex:1; padding: 10px 14px; border: 1px solid rgba(34,48,58,0.25); border-radius: 999px;
+  background:#FBF7EF; font-family:'Work Sans', sans-serif; font-size: 0.88rem;
+}
+.newsletter-msg{ margin-top: 8px; font-size: 0.82rem; color: var(--brass); }
+.newsletter-msg.error-text{ color: var(--wine); }
+
+@media (max-width: 640px){
+  .newsletter-form{ flex-direction:column; }
+  .guestbook-wrap{ padding: 0 6vw 70px; }
 }

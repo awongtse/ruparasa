@@ -4,3 +4,6 @@ uploads/*
 !uploads/.gitkeep
 data/works.json
 data/products.json
+data/comments.json
+data/guestbook.json
+data/newsletter.json

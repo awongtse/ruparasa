@@ -21,6 +21,7 @@
       <button class="nav-link" data-nav="exclusive">Eksklusif</button>
       <button class="nav-link" data-nav="shop">Shop</button>
       <button class="nav-link" data-nav="songlist">Song List</button>
+      <button class="nav-link" data-nav="guestbook">Buku Tamu</button>
     </div>
     <div class="topbar-actions">
       <button id="loginBtn" class="ghost-btn">Masuk</button>
@@ -116,9 +117,36 @@
   <p class="empty-state hidden" id="songEmpty">Belum ada lagu yang diunggah.</p>
 </section>
 
+<!-- ===== VIEW: BUKU TAMU ===== -->
+<section class="view" id="view-guestbook">
+  <div class="page-head">
+    <div class="page-label">Ruang Sapa</div>
+    <h2>Buku Tamu</h2>
+    <p class="page-desc">Tinggalkan jejak atau sapaan buat aku di sini.</p>
+  </div>
+  <div class="guestbook-wrap">
+    <div class="comment-form">
+      <input type="text" id="guestName" placeholder="Nama kamu (boleh kosong)">
+      <textarea id="guestMessage" placeholder="Tulis pesan atau kesanmu..." rows="3"></textarea>
+      <button class="solid-btn" id="guestSubmitBtn">Kirim Pesan</button>
+      <p class="error-text hidden" id="guestError"></p>
+    </div>
+    <div class="guestbook-list" id="guestbookList"></div>
+    <p class="empty-state hidden" id="guestbookEmpty">Belum ada pesan. Jadilah yang pertama menyapa.</p>
+  </div>
+</section>
+
 </main>
 
 <footer class="site-footer">
+  <div class="newsletter-box">
+    <p class="newsletter-label">Mau tau kalau ada karya baru?</p>
+    <form id="newsletterForm" class="newsletter-form">
+      <input type="email" id="newsletterEmail" placeholder="Alamat email kamu" required>
+      <button type="submit" class="solid-btn">Kirim</button>
+    </form>
+    <p class="newsletter-msg hidden" id="newsletterMsg"></p>
+  </div>
   <p>Dibuat dan dirawat sendiri &mdash; <span id="footerName">Ruparasa</span></p>
   <div class="social-links" id="socialLinks"></div>
 </footer>
