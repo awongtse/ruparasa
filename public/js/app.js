@@ -98,6 +98,7 @@ function showView(name) {
   el('navWrap').classList.remove('open');
   el('hamburgerBtn').classList.remove('open');
   document.body.classList.remove('nav-open');
+  if (name === 'guestbook') loadGuestbook();
 }
 
 // ============ KARYA / GALERI ============
@@ -265,8 +266,10 @@ function renderExclusive() {
 function renderSongList() {
   const wrap = el('songList');
   const list = state.works.filter(w => w.type === 'lagu');
+  const queue = list.map(w => w.id);
   wrap.innerHTML = '';
   el('songEmpty').classList.toggle('hidden', list.length > 0);
+  el('playAllBtn').classList.toggle('hidden', list.length === 0);
   list.forEach((w, i) => {
     const row = document.createElement('div');
     row.className = 'song-row';
@@ -285,7 +288,7 @@ function renderSongList() {
     `;
     row.addEventListener('click', (e) => {
       if (e.target.closest('.like-btn')) return;
-      openWork(w.id);
+      openWork(w.id, queue);
     });
     wrap.appendChild(row);
   });
@@ -322,10 +325,11 @@ function renderShop() {
 }
 
 // ============ LIHAT KARYA (fullscreen) ============
-async function openWork(id) {
+async function openWork(id, queue) {
   let w = state.works.find(x => x.id === id);
   if (!w) return;
   currentModalWork = w;
+  state.playlistQueue = queue || null;
 
   fetch(`/api/works/${id}/view`, { method: 'POST' }).then(async (res) => {
     const data = await res.json();
@@ -343,6 +347,9 @@ function renderModal(w) {
   const mediaWrap = el('viewMediaWrap');
   const bottom = el('viewBottom');
   const locked = w.exclusive && !w.unlocked;
+  const rmToggle = el('readingModeToggle');
+  rmToggle.classList.toggle('hidden', w.type !== 'tulisan' || locked);
+  applyReadingTheme('terang');
 
   if (locked) {
     mediaWrap.innerHTML = `
@@ -372,9 +379,147 @@ function renderModal(w) {
       <button class="like-btn ${w.liked ? 'liked' : ''}" data-id="${w.id}">${w.liked ? '&#9829;' : '&#9825;'} <span>${w.likes}</span></button>
       <button class="share-btn" id="shareBtn">&#128279; Salin Link</button>
     </div>
+    ${w.behindScenes ? `
+      <div class="behind-scenes">
+        <button class="bts-toggle" id="btsToggle">&#10024; Di Balik Karya Ini</button>
+        <div class="bts-content hidden" id="btsContent"><p>${escapeHTML(w.behindScenes)}</p></div>
+      </div>
+    ` : ''}
+    <div class="related-wrap" id="relatedWrap"></div>
+    <div class="comments-wrap">
+      <h4 class="comments-title">Komentar</h4>
+      <div class="comment-form">
+        <input type="text" id="commentName" placeholder="Nama kamu (boleh kosong)">
+        <textarea id="commentMessage" placeholder="Tulis komentar..." rows="2"></textarea>
+        <button class="solid-btn" id="commentSubmitBtn">Kirim Komentar</button>
+        <p class="error-text hidden" id="commentError"></p>
+      </div>
+      <div class="comments-list" id="commentsList"></div>
+    </div>
   `;
   bindCardActions(bottom);
   el('shareBtn').addEventListener('click', () => shareWork(w.id));
+  el('commentSubmitBtn').addEventListener('click', () => submitComment(w.id));
+  if (w.behindScenes) {
+    el('btsToggle').addEventListener('click', () => {
+      el('btsContent').classList.toggle('hidden');
+    });
+  }
+  loadComments(w.id);
+  loadRelated(w.id);
+
+  if (!locked && w.type === 'lagu') {
+    const audioEl = mediaWrap.querySelector('audio');
+    if (audioEl && state.playlistQueue) {
+      audioEl.addEventListener('ended', () => playNextInQueue(w.id));
+    }
+  }
+}
+
+function playNextInQueue(currentId) {
+  const queue = state.playlistQueue;
+  if (!queue || queue.length === 0) return;
+  const idx = queue.findIndex(id => id === currentId);
+  if (idx === -1 || idx === queue.length - 1) {
+    showToast('Playlist selesai.');
+    return;
+  }
+  openWork(queue[idx + 1], queue);
+}
+
+function applyReadingTheme(theme) {
+  const viewBox = document.querySelector('.view-box');
+  viewBox.classList.remove('theme-terang', 'theme-sepia', 'theme-gelap');
+  viewBox.classList.add('theme-' + theme);
+  document.querySelectorAll('.rm-btn').forEach(b => b.classList.toggle('active', b.dataset.theme === theme));
+}
+
+async function loadComments(workId) {
+  const listEl = el('commentsList');
+  listEl.innerHTML = '<p class="muted-text">Memuat komentar...</p>';
+  const res = await fetch(`/api/works/${workId}/comments`);
+  const comments = await res.json();
+  if (comments.length === 0) {
+    listEl.innerHTML = '<p class="muted-text">Belum ada komentar. Jadilah yang pertama.</p>';
+    return;
+  }
+  listEl.innerHTML = comments.map(c => `
+    <div class="comment-item">
+      <div class="comment-head">
+        <strong>${escapeHTML(c.name)}</strong>
+        <span class="comment-date">${timeAgo(c.createdAt)}</span>
+        ${state.loggedIn ? `<button class="del-comment-btn" data-id="${c.id}">Hapus</button>` : ''}
+      </div>
+      <p>${escapeHTML(c.message)}</p>
+    </div>
+  `).join('');
+  listEl.querySelectorAll('.del-comment-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await fetch(`/api/comments/${btn.dataset.id}`, { method: 'DELETE' });
+      loadComments(workId);
+    });
+  });
+}
+
+async function submitComment(workId) {
+  const name = el('commentName').value.trim();
+  const message = el('commentMessage').value.trim();
+  const errorEl = el('commentError');
+  if (!message) {
+    errorEl.textContent = 'Komentar nggak boleh kosong.';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+  const res = await fetch(`/api/works/${workId}/comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, message })
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    errorEl.textContent = data.error || 'Gagal mengirim komentar.';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+  errorEl.classList.add('hidden');
+  el('commentMessage').value = '';
+  loadComments(workId);
+}
+
+async function loadRelated(workId) {
+  const wrap = el('relatedWrap');
+  const res = await fetch(`/api/works/${workId}/related`);
+  const related = await res.json();
+  if (related.length === 0) {
+    wrap.innerHTML = '';
+    return;
+  }
+  wrap.innerHTML = `
+    <h4 class="related-title">Karya lain yang mungkin kamu suka</h4>
+    <div class="related-list">
+      ${related.map(w => `
+        <div class="related-item" data-id="${w.id}">
+          ${thumbHTML(w)}
+          <span class="related-item-title">${escapeHTML(w.title)}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  wrap.querySelectorAll('.related-item').forEach(item => {
+    item.addEventListener('click', () => openWork(item.dataset.id));
+  });
+}
+
+function timeAgo(ts) {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'baru saja';
+  if (mins < 60) return `${mins} menit lalu`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} jam lalu`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} hari lalu`;
+  return new Date(ts).toLocaleDateString('id-ID');
 }
 
 async function shareWork(id) {
@@ -530,6 +675,20 @@ function bindUI() {
     state.sort = e.target.value;
     renderGrid();
   });
+
+  el('guestSubmitBtn').addEventListener('click', submitGuestbook);
+  el('newsletterForm').addEventListener('submit', submitNewsletter);
+
+  el('playAllBtn').addEventListener('click', () => {
+    const list = state.works.filter(w => w.type === 'lagu');
+    if (list.length === 0) return;
+    const queue = list.map(w => w.id);
+    openWork(queue[0], queue);
+  });
+
+  document.querySelectorAll('.rm-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyReadingTheme(btn.dataset.theme));
+  });
 }
 
 async function doLogin() {
@@ -564,6 +723,7 @@ async function doUpload() {
   const price = el('workPrice').value;
   const accessCode = el('workAccessCode').value.trim();
   const isDraft = el('workDraft').checked;
+  const behindScenes = el('workBehindScenes').value.trim();
   const errorEl = el('uploadError');
 
   if (!title || !fileInput.files[0]) {
@@ -581,6 +741,7 @@ async function doUpload() {
   formData.append('title', title);
   formData.append('type', type);
   formData.append('description', description);
+  formData.append('behindScenes', behindScenes);
   formData.append('file', fileInput.files[0]);
   if (thumbInput.files[0]) formData.append('thumbnail', thumbInput.files[0]);
   if (isExclusive) {
@@ -602,6 +763,7 @@ async function doUpload() {
   errorEl.classList.add('hidden');
   el('workTitle').value = '';
   el('workDescription').value = '';
+  el('workBehindScenes').value = '';
   fileInput.value = '';
   thumbInput.value = '';
   el('workExclusive').checked = false;
@@ -649,6 +811,80 @@ async function doAddProduct() {
   el('productLink').value = '';
   imageInput.value = '';
   loadProducts();
+}
+
+// ============ BUKU TAMU ============
+async function loadGuestbook() {
+  const listEl = el('guestbookList');
+  listEl.innerHTML = '<p class="muted-text">Memuat pesan...</p>';
+  const res = await fetch('/api/guestbook');
+  const entries = await res.json();
+  el('guestbookEmpty').classList.toggle('hidden', entries.length > 0);
+  listEl.innerHTML = entries.map(g => `
+    <div class="comment-item">
+      <div class="comment-head">
+        <strong>${escapeHTML(g.name)}</strong>
+        <span class="comment-date">${timeAgo(g.createdAt)}</span>
+        ${state.loggedIn ? `<button class="del-comment-btn" data-id="${g.id}">Hapus</button>` : ''}
+      </div>
+      <p>${escapeHTML(g.message)}</p>
+    </div>
+  `).join('');
+  listEl.querySelectorAll('.del-comment-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await fetch(`/api/guestbook/${btn.dataset.id}`, { method: 'DELETE' });
+      loadGuestbook();
+    });
+  });
+}
+
+async function submitGuestbook() {
+  const name = el('guestName').value.trim();
+  const message = el('guestMessage').value.trim();
+  const errorEl = el('guestError');
+  if (!message) {
+    errorEl.textContent = 'Pesan nggak boleh kosong.';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+  const res = await fetch('/api/guestbook', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, message })
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    errorEl.textContent = data.error || 'Gagal mengirim pesan.';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+  errorEl.classList.add('hidden');
+  el('guestName').value = '';
+  el('guestMessage').value = '';
+  loadGuestbook();
+  showToast('Pesan terkirim, makasih ya!');
+}
+
+// ============ NEWSLETTER ============
+async function submitNewsletter(e) {
+  e.preventDefault();
+  const emailInput = el('newsletterEmail');
+  const msgEl = el('newsletterMsg');
+  const res = await fetch('/api/newsletter', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: emailInput.value.trim() })
+  });
+  const data = await res.json();
+  msgEl.classList.remove('hidden');
+  if (!res.ok) {
+    msgEl.textContent = data.error || 'Gagal mendaftar.';
+    msgEl.classList.add('error-text');
+    return;
+  }
+  msgEl.classList.remove('error-text');
+  msgEl.textContent = data.alreadySubscribed ? 'Email ini udah terdaftar.' : 'Terima kasih! Kamu bakal dikabarin kalau ada karya baru.';
+  emailInput.value = '';
 }
 
 function escapeHTML(str) {
