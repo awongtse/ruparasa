@@ -22,6 +22,9 @@ const DATA_DIR = path.join(__dirname, 'data');
 const WORKS_FILE = path.join(DATA_DIR, 'works.json');
 const PROFILE_FILE = path.join(DATA_DIR, 'profile.json');
 const PRODUCTS_FILE = path.join(DATA_DIR, 'products.json');
+const COMMENTS_FILE = path.join(DATA_DIR, 'comments.json');
+const GUESTBOOK_FILE = path.join(DATA_DIR, 'guestbook.json');
+const NEWSLETTER_FILE = path.join(DATA_DIR, 'newsletter.json');
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 
 // --- Helper baca/tulis data (file JSON sebagai "database" sederhana) ---
@@ -33,6 +36,9 @@ function writeJSON(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 if (!fs.existsSync(PRODUCTS_FILE)) writeJSON(PRODUCTS_FILE, []);
+if (!fs.existsSync(COMMENTS_FILE)) writeJSON(COMMENTS_FILE, []);
+if (!fs.existsSync(GUESTBOOK_FILE)) writeJSON(GUESTBOOK_FILE, []);
+if (!fs.existsSync(NEWSLETTER_FILE)) writeJSON(NEWSLETTER_FILE, []);
 
 // Hash password admin sekali di memori saat server nyala
 const ADMIN_HASH = bcrypt.hashSync(ADMIN_PASSWORD, 10);
@@ -165,6 +171,7 @@ function publicWork(w, req, isAdmin) {
     price: w.price || null,
     unlocked,
     status: w.status || 'published',
+    behindScenes: w.behindScenes || '',
     views: w.views,
     likes: w.likes,
     liked,
@@ -201,7 +208,7 @@ app.post('/api/works', requireLogin, workUpload.fields([
   { name: 'file', maxCount: 1 },
   { name: 'thumbnail', maxCount: 1 }
 ]), (req, res) => {
-  const { title, type, description, exclusive, price, accessCode, status } = req.body;
+  const { title, type, description, exclusive, price, accessCode, status, behindScenes } = req.body;
   const fileArr = req.files && req.files.file;
   const thumbArr = req.files && req.files.thumbnail;
   if (!title || !type || !fileArr || !fileArr[0]) {
@@ -217,6 +224,7 @@ app.post('/api/works', requireLogin, workUpload.fields([
     title,
     type,
     description: description || '',
+    behindScenes: behindScenes || '',
     filename: fileArr[0].filename,
     originalName: fileArr[0].originalname,
     thumbnail: thumbArr && thumbArr[0] ? thumbArr[0].filename : null,
@@ -239,9 +247,10 @@ app.patch('/api/works/:id', requireLogin, (req, res) => {
   const works = readJSON(WORKS_FILE, []);
   const work = works.find(w => w.id === req.params.id);
   if (!work) return res.status(404).json({ error: 'Karya tidak ditemukan.' });
-  const { title, description, exclusive, price, accessCode, status } = req.body;
+  const { title, description, exclusive, price, accessCode, status, behindScenes } = req.body;
   if (title !== undefined) work.title = title;
   if (description !== undefined) work.description = description;
+  if (behindScenes !== undefined) work.behindScenes = behindScenes;
   if (exclusive !== undefined) work.exclusive = (exclusive === 'true' || exclusive === true);
   if (price !== undefined) work.price = price ? Number(price) : null;
   if (accessCode !== undefined && accessCode) work.accessCode = accessCode;
@@ -346,6 +355,108 @@ app.delete('/api/products/:id', requireLogin, (req, res) => {
   }
   writeJSON(PRODUCTS_FILE, products.filter(p => p.id !== req.params.id));
   res.json({ ok: true });
+});
+
+// ===== Karya terkait =====
+app.get('/api/works/:id/related', (req, res) => {
+  const works = readJSON(WORKS_FILE, []);
+  const isAdmin = !!(req.session && req.session.loggedIn);
+  const current = works.find(w => w.id === req.params.id);
+  if (!current) return res.json([]);
+  let pool = works.filter(w =>
+    w.id !== current.id &&
+    (w.status || 'published') === 'published' &&
+    w.type === current.type
+  );
+  if (pool.length < 3) {
+    const others = works.filter(w =>
+      w.id !== current.id &&
+      (w.status || 'published') === 'published' &&
+      w.type !== current.type &&
+      !pool.includes(w)
+    );
+    pool = pool.concat(others);
+  }
+  const shuffled = pool.sort(() => Math.random() - 0.5).slice(0, 3);
+  res.json(shuffled.map(w => publicWork(w, req, isAdmin)));
+});
+
+// ===== Komentar per karya =====
+function sanitizeText(str, max) {
+  return String(str || '').trim().slice(0, max);
+}
+
+app.get('/api/works/:id/comments', (req, res) => {
+  const comments = readJSON(COMMENTS_FILE, []);
+  const list = comments.filter(c => c.workId === req.params.id).sort((a, b) => b.createdAt - a.createdAt);
+  res.json(list);
+});
+
+app.post('/api/works/:id/comments', (req, res) => {
+  const works = readJSON(WORKS_FILE, []);
+  const work = works.find(w => w.id === req.params.id);
+  if (!work) return res.status(404).json({ error: 'Karya tidak ditemukan.' });
+  const name = sanitizeText(req.body.name, 60) || 'Anonim';
+  const message = sanitizeText(req.body.message, 500);
+  if (!message) return res.status(400).json({ error: 'Komentar tidak boleh kosong.' });
+  const comments = readJSON(COMMENTS_FILE, []);
+  const comment = {
+    id: crypto.randomUUID(),
+    workId: req.params.id,
+    name,
+    message,
+    createdAt: Date.now()
+  };
+  comments.push(comment);
+  writeJSON(COMMENTS_FILE, comments);
+  res.json(comment);
+});
+
+app.delete('/api/comments/:id', requireLogin, (req, res) => {
+  const comments = readJSON(COMMENTS_FILE, []);
+  writeJSON(COMMENTS_FILE, comments.filter(c => c.id !== req.params.id));
+  res.json({ ok: true });
+});
+
+// ===== Buku tamu =====
+app.get('/api/guestbook', (req, res) => {
+  const list = readJSON(GUESTBOOK_FILE, []).sort((a, b) => b.createdAt - a.createdAt);
+  res.json(list);
+});
+
+app.post('/api/guestbook', (req, res) => {
+  const name = sanitizeText(req.body.name, 60) || 'Anonim';
+  const message = sanitizeText(req.body.message, 500);
+  if (!message) return res.status(400).json({ error: 'Pesan tidak boleh kosong.' });
+  const entries = readJSON(GUESTBOOK_FILE, []);
+  const entry = { id: crypto.randomUUID(), name, message, createdAt: Date.now() };
+  entries.push(entry);
+  writeJSON(GUESTBOOK_FILE, entries);
+  res.json(entry);
+});
+
+app.delete('/api/guestbook/:id', requireLogin, (req, res) => {
+  const entries = readJSON(GUESTBOOK_FILE, []);
+  writeJSON(GUESTBOOK_FILE, entries.filter(e => e.id !== req.params.id));
+  res.json({ ok: true });
+});
+
+// ===== Newsletter =====
+app.post('/api/newsletter', (req, res) => {
+  const email = sanitizeText(req.body.email, 120).toLowerCase();
+  const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  if (!validEmail) return res.status(400).json({ error: 'Email tidak valid.' });
+  const subs = readJSON(NEWSLETTER_FILE, []);
+  if (subs.some(s => s.email === email)) {
+    return res.json({ ok: true, alreadySubscribed: true });
+  }
+  subs.push({ email, createdAt: Date.now() });
+  writeJSON(NEWSLETTER_FILE, subs);
+  res.json({ ok: true });
+});
+
+app.get('/api/newsletter', requireLogin, (req, res) => {
+  res.json(readJSON(NEWSLETTER_FILE, []));
 });
 
 // Tangani error dari multer (misal file kegedean / tipe salah)
